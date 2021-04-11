@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import sys
 
 import numpy as np
 
@@ -14,12 +15,16 @@ def entry_docset():
     parser.add_argument('input', nargs=1)
     args = parser.parse_args()
 
-    args.input = args.input[0]
-    with DocSet(args.input, 'r') as f:
+    path = args.input[0]
+    if not os.path.exists(path):
+        print(f'File {path} does not exists.', file=sys.stderr)
+        return 1
+
+    with DocSet(path, 'r') as f:
         count = len(f)
-        size = os.path.getsize(args.input)
+        size = os.path.getsize(path)
         size_per_sample = int(size / count + 0.5) if count > 0 else 0
-        print(args.input)
+        print(path)
         print(f'Count: {count}, Size: {_format_size(size)}, Avg: {_format_size(size_per_sample)}/sample')
         print()
 
