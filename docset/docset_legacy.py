@@ -2,44 +2,67 @@
 
 
 import io
+import os
 import struct
 
 import numpy as np
 from bson import InvalidBSON
-from . import docset_legacy
 
 from . import codec
 
-STRUCT_HEADER = struct.Struct('<8sQQQ')
-TYPE_STR = b'DOCSET\0\0'
 UINT64 = struct.Struct('<Q')
 
 UNLOAD_VALUE = 0xFFFFFFFFFFFFFFFF
+DEFAULT_HEAD_SIZE = 4096
+MIN_HEAD_SIZE = 512
+MAX_HEAD_SIZE = 16777216
 DEFAULT_BLOCK_SIZE = 512
 
 
 class DocSetWriter(object):
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, head_size: int = DEFAULT_HEAD_SIZE):
         self._path = path
-        self._index = []
-        self._meta_doc = {}
+        assert head_size >= MIN_HEAD_SIZE
+        self._head_size = head_size
 
         self._fp = io.open(path, 'wb')
-        self._fp.write(STRUCT_HEADER.pack(TYPE_STR, 0, UNLOAD_VALUE, UNLOAD_VALUE))
+
+        self._index = []
+        self._index_pos = None
+        self._meta_doc = {}
+
+        self._write_head()
 
     def __del__(self):
         self.close()
 
     def close(self):
         if self._fp is not None:
-            count = len(self._index)
-            index_start = self._write_index()
-            meta_start = self._write_meta_doc()
-            self._fp.seek(0, io.SEEK_SET)
-            self._fp.write(STRUCT_HEADER.pack(TYPE_STR, count, index_start, meta_start))
+            self._write_index()
+            self._write_head()
             self._fp.close()
             self._fp = None
+
+    def _write_head(self):
+        basic_doc = {
+            '__HDS__': self._head_size,  # head size
+            '__CNT__': len(self._index),  # count of samples
+            '__IDX__': self._index_pos  # index start
+        }
+        doc_data = codec.encode_doc({**basic_doc, **self._meta_doc})
+        doc_data_size = len(doc_data)
+        pad_size = self._head_size - (UINT64.size + doc_data_size)
+        if pad_size < 0:
+            doc_data = codec.encode_doc(basic_doc)
+            doc_data_size = len(doc_data)
+            pad_size = self._head_size - (UINT64.size + doc_data_size)
+        self._fp.seek(0, io.SEEK_SET)
+        self._fp.write(UINT64.pack(doc_data_size))
+        self._fp.write(doc_data)
+        if pad_size > 0:
+            self._fp.write(b'\0' * pad_size)
+        self._fp.seek(0, io.SEEK_END)
 
     def write(self, doc):
         assert self._fp is not None
@@ -50,17 +73,9 @@ class DocSetWriter(object):
         self._index.append(pos)
 
     def _write_index(self):
-        index_start = self._fp.tell()
+        self._index_pos = self._fp.tell()
         for pos in self._index:
             self._fp.write(UINT64.pack(pos))
-        return index_start
-
-    def _write_meta_doc(self):
-        meta_start = self._fp.tell()
-        doc_data = codec.encode_doc(self._meta_doc)
-        self._fp.write(UINT64.pack(len(doc_data)))
-        self._fp.write(doc_data)
-        return meta_start
 
     def __enter__(self):
         return self
@@ -85,20 +100,25 @@ class DocSetReader(object):
         self._fp = None
 
         with io.open(path, 'rb') as fp:
-            type_str, count, index_start, meta_start = STRUCT_HEADER.unpack(fp.read(STRUCT_HEADER.size))
-            if type_str != TYPE_STR:
-                raise RuntimeError('Invalid DocSet file.')
-            self._index_start = index_start
-            self._index_count = count
-            fp.seek(meta_start, io.SEEK_SET)
             doc_data_size = UINT64.unpack(fp.read(UINT64.size))[0]
+            if doc_data_size > MAX_HEAD_SIZE or doc_data_size > os.path.getsize(path):
+                raise RuntimeError('Invalid DocSet file.')
             doc_data = fp.read(doc_data_size)
             try:
-                self._meta_doc = codec.decode_doc(doc_data)
+                doc = codec.decode_doc(doc_data)
             except InvalidBSON:
-                raise RuntimeError('Invalid metadata.')
-
+                raise RuntimeError('Invalid DocSet file.')
+            try:
+                self._head_size = doc['__HDS__']
+                self._index_count = doc['__CNT__']
+                self._index_start = doc['__IDX__']
+            except KeyError:
+                raise RuntimeError('Corrupted meta document.')
             self._index = np.full((self._index_count,), UNLOAD_VALUE, dtype='<u8')
+            self._meta_doc = {**doc}
+            del self._meta_doc['__HDS__']
+            del self._meta_doc['__CNT__']
+            del self._meta_doc['__IDX__']
 
     def __del__(self):
         self.close()
@@ -142,15 +162,3 @@ class DocSetReader(object):
 
     def __getitem__(self, i):
         return self.read(i)
-
-
-def DocSet(path: str, mode: str, *, block_size=512):
-    if mode == 'r':
-        try:
-            return DocSetReader(path, block_size=block_size)
-        except RuntimeError:
-            return docset_legacy.DocSetReader(path, block_size=block_size)
-    elif mode == 'w':
-        return DocSetWriter(path)
-    else:
-        raise RuntimeError('"mode" should be one of {"r", "w"}.')
