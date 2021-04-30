@@ -88,6 +88,8 @@ class DocSetReader(object):
             type_str, count, index_start, meta_start = STRUCT_HEADER.unpack(fp.read(STRUCT_HEADER.size))
             if type_str != TYPE_STR:
                 raise RuntimeError('Invalid DocSet file.')
+            if index_start == UNLOAD_VALUE or meta_start == UNLOAD_VALUE:
+                raise RuntimeError('Incomplete DocSet.')
             self._index_start = index_start
             self._index_count = count
             fp.seek(meta_start, io.SEEK_SET)
