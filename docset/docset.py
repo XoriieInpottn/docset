@@ -6,27 +6,29 @@ import struct
 
 import numpy as np
 from bson import InvalidBSON
-from . import docset_legacy
 
 from . import codec
+from . import docset_legacy
 
-STRUCT_HEADER = struct.Struct('<8sQQQ')
-TYPE_STR = b'DOCSET\0\0'
+STRUCT_HEADER = struct.Struct('<8sQQQ')  # 32 B
 UINT64 = struct.Struct('<Q')
+TYPE_STR = b'DOCSET71'
 
-UNLOAD_VALUE = 0xFFFFFFFFFFFFFFFF
+NONE_VALUE = 0xFFFFFFFFFFFFFFFF
 DEFAULT_BLOCK_SIZE = 512
+DEFAULT_READ_BUFFER_SIZE = 1024 * 1024  # 1 MB
+DEFAULT_WRITE_BUFFER_SIZE = 1024 * 1024 * 8  # 8 MB
 
 
 class DocSetWriter(object):
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, buffer_size=DEFAULT_WRITE_BUFFER_SIZE):
         self._path = path
         self._index = []
         self._meta_doc = {}
 
-        self._fp = io.open(path, 'wb')
-        self._fp.write(STRUCT_HEADER.pack(TYPE_STR, 0, UNLOAD_VALUE, UNLOAD_VALUE))
+        self._fp = io.open(path, 'wb', buffering=buffer_size)
+        self._fp.write(STRUCT_HEADER.pack(TYPE_STR, 0, NONE_VALUE, NONE_VALUE))
 
     def __del__(self):
         self.close()
@@ -78,9 +80,13 @@ class DocSetWriter(object):
 
 class DocSetReader(object):
 
-    def __init__(self, path: str, block_size: int = DEFAULT_BLOCK_SIZE):
+    def __init__(self,
+                 path: str,
+                 block_size: int = DEFAULT_BLOCK_SIZE,
+                 buffer_size: int = DEFAULT_READ_BUFFER_SIZE):
         self._path = path
         self._block_size = block_size
+        self._buffer_size = buffer_size
 
         self._fp = None
 
@@ -88,7 +94,7 @@ class DocSetReader(object):
             type_str, count, index_start, meta_start = STRUCT_HEADER.unpack(fp.read(STRUCT_HEADER.size))
             if type_str != TYPE_STR:
                 raise RuntimeError('Invalid DocSet file.')
-            if index_start == UNLOAD_VALUE or meta_start == UNLOAD_VALUE:
+            if index_start == NONE_VALUE or meta_start == NONE_VALUE:
                 raise RuntimeError('Incomplete DocSet.')
             self._index_start = index_start
             self._index_count = count
@@ -100,7 +106,7 @@ class DocSetReader(object):
             except InvalidBSON:
                 raise RuntimeError('Invalid metadata.')
 
-            self._index = np.full((self._index_count,), UNLOAD_VALUE, dtype='<u8')
+            self._index = np.full((self._index_count,), NONE_VALUE, dtype='<u8')
 
     def __del__(self):
         self.close()
@@ -112,10 +118,10 @@ class DocSetReader(object):
 
     def read(self, i):
         if self._fp is None:
-            self._fp = io.open(self._path, 'rb')
+            self._fp = io.open(self._path, 'rb', buffering=self._buffer_size)
 
         pos = self._index[i]
-        if pos == UNLOAD_VALUE:
+        if pos == NONE_VALUE:
             i_left = (i // self._block_size) * self._block_size
             i_right = min(i_left + self._block_size, self._index_count)
             self._fp.seek(self._index_start + UINT64.size * i_left, io.SEEK_SET)
@@ -146,13 +152,20 @@ class DocSetReader(object):
         return self.read(i)
 
 
-def DocSet(path: str, mode: str, *, block_size=512):
+# noinspection PyPep8Naming
+def DocSet(path: str, mode: str, *, block_size: int = None, buffer_size: int = None):
     if mode == 'r':
+        if block_size is None:
+            block_size = DEFAULT_BLOCK_SIZE
+        if buffer_size is None:
+            buffer_size = DEFAULT_READ_BUFFER_SIZE
         try:
-            return DocSetReader(path, block_size=block_size)
+            return DocSetReader(path, block_size=block_size, buffer_size=buffer_size)
         except RuntimeError:
             return docset_legacy.DocSetReader(path, block_size=block_size)
     elif mode == 'w':
-        return DocSetWriter(path)
+        if buffer_size is None:
+            buffer_size = DEFAULT_WRITE_BUFFER_SIZE
+        return DocSetWriter(path, buffer_size=buffer_size)
     else:
         raise RuntimeError('"mode" should be one of {"r", "w"}.')

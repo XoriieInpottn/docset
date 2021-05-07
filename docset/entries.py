@@ -20,30 +20,32 @@ def entry_docset():
         print(f'File {path} does not exists.', file=sys.stderr)
         return 1
 
-    with DocSet(path, 'r') as f:
-        count = len(f)
-        size = os.path.getsize(path)
-        size_per_sample = int(size / count + 0.5) if count > 0 else 0
-        print(path)
-        print(f'Count: {count}, Size: {_format_size(size)}, Avg: {_format_size(size_per_sample)}/sample')
-        print()
-
-        meta_doc = f.meta_doc
-        if meta_doc:
-            for name, value in f.meta_doc.items():
-                print(f'{name}: {str(value)}')
+    try:
+        with DocSet(path, 'r') as f:
+            count = len(f)
+            size = os.path.getsize(path)
+            size_per_sample = int(size / count + 0.5) if count > 0 else 0
+            print(path)
+            print(f'Count: {count}, Size: {_format_size(size)}, Avg: {_format_size(size_per_sample)}/sample')
             print()
 
-        for i in range(min(2, count)):
-            print(f'Sample {i}')
-            _print_doc(f[i])
+            meta_doc = f.meta_doc
+            if meta_doc:
+                for name, value in f.meta_doc.items():
+                    print(f'{name}: {str(value)}')
+                print()
 
-        if count > 2:
-            i = count - 1
-            print('...')
-            print(f'Sample {i}')
-            _print_doc(f[i])
+            for i in range(min(2, count)):
+                print(f'Sample {i}')
+                _print_doc(f[i])
 
+            if count > 2:
+                i = count - 1
+                print('...')
+                print(f'Sample {i}')
+                _print_doc(f[i])
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
     return 0
 
 
