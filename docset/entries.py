@@ -83,7 +83,7 @@ def _print_doc(doc):
                         image = None
                     if image is not None:
                         value_str = f'jpeg_image(size={image.shape})'
-                elif value.startswith(b'.PNG'):
+                elif value.startswith(b'\x89\x50\x4e\x47'):
                     try:
                         image = cv.imdecode(np.frombuffer(value, np.byte), cv.IMREAD_UNCHANGED)
                     except cv.error:
