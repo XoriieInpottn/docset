@@ -9,6 +9,11 @@ import numpy as np
 
 from .docset import DocSet
 
+try:
+    import cv2 as cv
+except ImportError:
+    cv = None
+
 
 def entry_docset():
     parser = argparse.ArgumentParser()
@@ -64,14 +69,33 @@ def _format_size(size):
 
 def _print_doc(doc):
     for name, value in doc.items():
+        value_str = None
         if isinstance(value, str):
-            value = f'"{value}"'
+            value_str = f'"{value}"'
         elif isinstance(value, np.ndarray):
-            value = f'ndarray(dtype={value.dtype}, shape={value.shape})'
+            value_str = f'ndarray(dtype={value.dtype}, shape={value.shape})'
         elif isinstance(value, bytes):
-            size = _format_size(len(value))
-            value = f'binary(size={size})'
-        print(f'    "{name}": {value}')
+            if cv is not None:
+                if value.startswith(b'\xff\xd8') and len(value) >= 10 and value[6:10] == b'JFIF':
+                    try:
+                        image = cv.imdecode(np.frombuffer(value, np.byte), cv.IMREAD_UNCHANGED)
+                    except cv.error:
+                        image = None
+                    if image is not None:
+                        value_str = f'jpeg_image(size={image.shape})'
+                elif value.startswith(b'.PNG'):
+                    try:
+                        image = cv.imdecode(np.frombuffer(value, np.byte), cv.IMREAD_UNCHANGED)
+                    except cv.error:
+                        image = None
+                    if image is not None:
+                        value_str = f'png_image(size={image.shape})'
+            if value_str is None:
+                size = _format_size(len(value))
+                value_str = f'binary(size={size})'
+        else:
+            value_str = value
+        print(f'    "{name}": {value_str}')
 
 
 if __name__ == '__main__':

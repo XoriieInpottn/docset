@@ -16,7 +16,7 @@ if __name__ == '__main__':
                 'docset = docset.entries:entry_docset'
             ]
         },
-        version='0.4',
+        version='0.5',
         keywords=('dataset', 'file format'),
         description='A dataset format/utilities used to store document objects based on BSON.',
         long_description_content_type='text/markdown',
@@ -24,7 +24,7 @@ if __name__ == '__main__':
         license='BSD-3-Clause License',
         author='xi',
         author_email='gylv@mail.ustc.edu.cn',
-        # url='https://github.com/XoriieInpottn/docset',
+        url='https://github.com/XoriieInpottn/docset',
         platforms='any',
         classifiers=[
             'Programming Language :: Python :: 3.6',
