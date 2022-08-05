@@ -16,8 +16,8 @@ if __name__ == '__main__':
                 'docset = docset.entries:entry_docset'
             ]
         },
-        version='0.5.1',
-        keywords=('dataset', 'file format'),
+        version='0.5.2',
+        keywords=['dataset', 'file format'],
         description='A dataset format/utilities used to store document objects based on BSON.',
         long_description_content_type='text/markdown',
         long_description=long_description,

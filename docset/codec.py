@@ -7,6 +7,13 @@ from bson import BSON
 from bson.binary import Binary, USER_DEFINED_SUBTYPE
 from bson.codec_options import TypeCodec, CodecOptions, TypeRegistry
 
+__all__ = [
+    'encode_ndarray',
+    'decode_ndarray',
+    'encode_doc',
+    'decode_doc'
+]
+
 
 def encode_ndarray(a: np.ndarray) -> bytes:
     buf = io.BytesIO()

@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 
 
+import bisect
 import io
 import struct
+from typing import Sequence, List
 
 import numpy as np
 from bson import InvalidBSON
 
 from . import codec
 from . import docset_legacy
+
+__all__ = [
+    'DocSetWriter',
+    'DocSetReader',
+    'ConcatDocSet',
+    'DocSet'
+]
 
 STRUCT_HEADER = struct.Struct('<8sQQQ')  # 32 B
 UINT64 = struct.Struct('<Q')
@@ -152,8 +161,40 @@ class DocSetReader(object):
         return self.read(i)
 
 
+class ConcatDocSet(object):
+
+    def __init__(self, ds_list: Sequence[DocSetReader]):
+        self.ds_list: List[DocSetReader] = []
+        self.cum_sizes = []
+
+        assert len(ds_list) != 0
+        cum_size = 0
+        for ds in ds_list:
+            self.ds_list.append(ds)
+            cum_size = cum_size + len(ds)
+            self.cum_sizes.append(cum_size)
+
+    def __len__(self):
+        return self.cum_sizes[-1]
+
+    def read(self, i):
+        if i < 0:
+            if -i > len(self):
+                raise ValueError("absolute value of index should not exceed dataset length")
+            i = len(self) + i
+        ds_idx = bisect.bisect_right(self.cum_sizes, i)
+        if ds_idx == 0:
+            sample_idx = i
+        else:
+            sample_idx = i - self.cum_sizes[ds_idx - 1]
+        return self.ds_list[ds_idx][sample_idx]
+
+    def __getitem__(self, i):
+        return self.read(i)
+
+
 # noinspection PyPep8Naming
-def DocSet(path: str, mode: str, *, block_size: int = None, buffer_size: int = None):
+def DocSet(path: str, mode: str = 'r', *, block_size: int = None, buffer_size: int = None):
     if mode == 'r':
         if block_size is None:
             block_size = DEFAULT_BLOCK_SIZE
