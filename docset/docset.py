@@ -3,6 +3,7 @@
 
 import bisect
 import io
+import os
 import struct
 from typing import Sequence, List
 
@@ -97,25 +98,26 @@ class DocSetReader(object):
         self._block_size = block_size
         self._buffer_size = buffer_size
 
-        self._fp = None
+        self._fp = io.open(self._path, 'rb', buffering=self._buffer_size)
 
-        with io.open(path, 'rb') as fp:
-            type_str, count, index_start, meta_start = STRUCT_HEADER.unpack(fp.read(STRUCT_HEADER.size))
-            if type_str != TYPE_STR:
-                raise RuntimeError('Invalid DocSet file.')
-            if index_start == NONE_VALUE or meta_start == NONE_VALUE:
-                raise RuntimeError('Incomplete DocSet.')
-            self._index_start = index_start
-            self._index_count = count
-            fp.seek(meta_start, io.SEEK_SET)
-            doc_data_size = UINT64.unpack(fp.read(UINT64.size))[0]
-            doc_data = fp.read(doc_data_size)
-            try:
-                self._meta_doc = codec.decode_doc(doc_data)
-            except InvalidBSON:
-                raise RuntimeError('Invalid metadata.')
+        type_str, count, index_start, meta_start = STRUCT_HEADER.unpack(self._fp.read(STRUCT_HEADER.size))
+        if type_str != TYPE_STR:
+            raise RuntimeError('Invalid DocSet file.')
+        if index_start == NONE_VALUE or meta_start == NONE_VALUE:
+            raise RuntimeError('Incomplete DocSet.')
+        self._index_start = index_start
+        self._index_count = count
+        self._fp.seek(meta_start, io.SEEK_SET)
+        doc_data_size = UINT64.unpack(self._fp.read(UINT64.size))[0]
+        doc_data = self._fp.read(doc_data_size)
+        try:
+            self._meta_doc = codec.decode_doc(doc_data)
+        except InvalidBSON:
+            raise RuntimeError('Invalid metadata.')
 
-            self._index = np.full((self._index_count,), NONE_VALUE, dtype='<u8')
+        self._index = np.full((self._index_count,), NONE_VALUE, dtype='<u8')
+
+        self.pid = os.getpid()
 
     def __del__(self):
         self.close()
@@ -126,8 +128,11 @@ class DocSetReader(object):
             self._fp = None
 
     def read(self, i):
-        if self._fp is None:
+        pid = os.getpid()
+        if pid != self.pid:
+            self._fp.close()
             self._fp = io.open(self._path, 'rb', buffering=self._buffer_size)
+            self.pid = pid
 
         pos = self._index[i]
         if pos == NONE_VALUE:
