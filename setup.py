@@ -16,7 +16,7 @@ if __name__ == '__main__':
                 'docset = docset.entries:entry_docset'
             ]
         },
-        version='0.5.3',
+        version='0.5.4',
         keywords=['dataset', 'file format'],
         description='A dataset format/utilities used to store document objects based on BSON.',
         long_description_content_type='text/markdown',
@@ -35,6 +35,7 @@ if __name__ == '__main__':
         zip_safe=True,
         install_requires=[
             'numpy',
-            'pymongo'
+            'pymongo',
+            'tqdm'
         ]
     )
