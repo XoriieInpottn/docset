@@ -3,6 +3,7 @@
 
 import argparse
 import os
+import random
 import sys
 
 import numpy as np
@@ -121,9 +122,43 @@ def merge_ds(args):
     return 0
 
 
+def shuffle_ds(args):
+    if len(args.input) < 2:
+        print('Output name should be given.', file=sys.stderr)
+        return 1
+    if len(args.input) > 2:
+        print('Only source ds and target ds should be given.', file=sys.stderr)
+        return 1
+    if os.path.exists(args.input[-1]):
+        print(f'{args.input[-1]} exists. Please remove it if you really want to do this.', file=sys.stderr)
+        return 2
+
+    input_path = args.input[0]
+    output_path = args.input[1]
+    ds_in = DocSet(input_path, 'r')
+    ds_out = DocSet(output_path, 'w')
+    count = len(ds_in)
+    bar = tqdm(total=count, leave=False)
+    try:
+        bar.set_description('Shuffling')
+        perm = [i for i in range(len(ds_in))]
+        for _ in range(3):
+            random.shuffle(perm)
+        bar.set_description(f'Writing to {os.path.basename(output_path)}')
+        for idx in perm:
+            bar.update()
+            ds_out.write(ds_in[idx])
+    finally:
+        ds_in.close()
+        ds_out.close()
+        bar.close()
+    return 0
+
+
 _DISPATCH = {
     'view': view_ds,
-    'merge': merge_ds
+    'merge': merge_ds,
+    'shuffle': shuffle_ds
 }
 
 
